@@ -1,5 +1,5 @@
-from utils import helpers
-from utils import heist
+from src.utils import helpers
+from src.utils import heist
 import random
 import numpy as np
 import imageio
@@ -76,7 +76,7 @@ def load_viable_seeds():
             LOADED_SEEDS = [0] # Fallback
 load_viable_seeds() # Load seeds when the module is imported
 
-def create_custom_maze_sequence(maze_patterns, maze_size=7):
+def create_custom_maze_sequence(maze_patterns, maze_size=7, seed=None):
     """
     Creates a sequence of maze environments based on a list of patterns with numerical encoding
     where different numbers represent different elements:
@@ -90,12 +90,13 @@ def create_custom_maze_sequence(maze_patterns, maze_size=7):
     - 7 = blue lock
     - 8 = green lock
     - 9 = red lock
-    
+
     Args:
-        maze_patterns (list): List of 2D numpy arrays representing maze patterns with the 
+        maze_patterns (list): List of 2D numpy arrays representing maze patterns with the
                               numerical encoding specified above
         maze_size (int): Size of the maze (default: 7x7)
-    
+        seed (int): Seed for environment creation (start_level). If None, randomly selects from viable seeds.
+
     Returns:
         tuple: (observations, venv) where observations is a list of observations from each
                maze environment and venv is the final environment
@@ -111,22 +112,26 @@ def create_custom_maze_sequence(maze_patterns, maze_size=7):
         8: {"type": "lock", "color": "green"},
         9: {"type": "lock", "color": "red"}
     }
-    
+
     observations = []
-    
-    # Create initial environment using a randomly selected pre-verified seed
-    if not LOADED_SEEDS: # Should have been loaded, but as a safeguard
-        print("Error: Viable seeds list is empty. Cannot create environment.")
-        # Potentially raise an error or return a dummy environment
-        # For now, let's try to load again or use a hardcoded default if critical
-        load_viable_seeds() # Attempt to reload
-        if not LOADED_SEEDS: # Still no seeds
-             selected_seed = 0 # Last resort default
-             print(f"Critical fallback: using seed {selected_seed} as no viable seeds could be loaded.")
+
+    # Use provided seed or randomly select one
+    if seed is not None:
+        selected_seed = seed
+    else:
+        # Create initial environment using a randomly selected pre-verified seed
+        if not LOADED_SEEDS: # Should have been loaded, but as a safeguard
+            print("Error: Viable seeds list is empty. Cannot create environment.")
+            # Potentially raise an error or return a dummy environment
+            # For now, let's try to load again or use a hardcoded default if critical
+            load_viable_seeds() # Attempt to reload
+            if not LOADED_SEEDS: # Still no seeds
+                 selected_seed = 0 # Last resort default
+                 print(f"Critical fallback: using seed {selected_seed} as no viable seeds could be loaded.")
+            else:
+                selected_seed = random.choice(LOADED_SEEDS)
         else:
             selected_seed = random.choice(LOADED_SEEDS)
-    else:
-        selected_seed = random.choice(LOADED_SEEDS)
 
     # print(f"  Using seed: {selected_seed} for this maze instance.") # Optional: for debugging
 
@@ -636,15 +641,15 @@ def create_trident_maze():
     
     return create_custom_maze_sequence([pattern])
 
-def create_cross_maze():
+def create_cross_maze(include_locks=True, seed=None):
     """
     Creates an example sequence of maze environments to demonstrate the custom maze functionality.
 
     This example creates a sequence showing an entity moving around the maze in a predefined path.
 
     Args:
-        entity1 (int): Code for the main entity to track (default: 4, blue key)
-        entity2 (int): Code for a secondary static entity, or None to not include (default: None)
+        include_locks (bool): If True, include locks blocking access to keys. If False, no locks.
+        seed (int): Seed for environment creation (start_level). If None, randomly selects from viable seeds.
 
     Returns:
         tuple: (observations, venv) - List of observations and final environment
@@ -704,15 +709,149 @@ def create_cross_maze():
         r, c = corridor['key_pos']
         pattern[r, c] = key_val
 
-        # Place the corresponding lock that blocks this key
-        lock_val = key_to_lock[key_val]
-        if lock_val is not None:
-            r_lock, c_lock = corridor['lock_pos']
-            pattern[r_lock, c_lock] = lock_val
-        # If lock_val is None (blue key), leave the lock position as corridor (1)
+        # Only place locks if include_locks is True
+        if include_locks:
+            # Place the corresponding lock that blocks this key
+            lock_val = key_to_lock[key_val]
+            if lock_val is not None:
+                r_lock, c_lock = corridor['lock_pos']
+                pattern[r_lock, c_lock] = lock_val
+            # If lock_val is None (blue key), leave the lock position as corridor (1)
+
+    return create_custom_maze_sequence([pattern], seed=seed)
+
+def create_expanded_cross_maze(seed=None):
+    """
+    Creates a 9x9 cross maze with region-based entity placement (no locks).
+    Entities can appear at any position within their designated region, controlled by seed.
+
+    This provides 1,296 unique maze configurations (6 positions per entity × 4 entities).
+
+    Args:
+        seed (int): Seed for both Python random and NumPy random to ensure reproducible
+                   entity placement. If None, randomly selects from viable seeds.
+
+    Returns:
+        tuple: (observations, venv) - List of observations and final environment
+    """
+    # Set seeds for reproducible entity placement within regions
+    if seed is not None:
+        random.seed(seed)
+        np.random.seed(seed)
+
+    # Define 9x9 maze pattern with regions
+    # 0 = wall, 1 = corridor, 2 = player
+    # 3 = gem region, 4 = blue key region, 5 = green key region, 6 = red key region
+    # Each number represents a region where that entity can appear
+    pattern = np.array([
+        [0, 0, 5, 5, 5, 5, 5, 0, 0],  # Green key region at top
+        [0, 0, 0, 0, 5, 0, 0, 0, 0],
+        [4, 0, 0, 0, 1, 0, 0, 0, 3],  # Blue region (left), Gem region (right)
+        [4, 0, 0, 0, 1, 0, 0, 0, 3],
+        [4, 4, 1, 1, 2, 1, 1, 3, 3],  # Player at center
+        [4, 0, 0, 0, 1, 0, 0, 0, 3],
+        [4, 0, 0, 0, 1, 0, 0, 0, 3],
+        [0, 0, 0, 0, 6, 0, 0, 0, 0],  # Red key region at bottom
+        [0, 0, 6, 6, 6, 6, 6, 0, 0]
+    ])
+
+    # For each entity type, randomly pick one position from its region
+    entity_types = [3, 4, 5, 6]  # gem, blue key, green key, red key
+    final_pattern = pattern.copy()
+
+    for entity_val in entity_types:
+        # Find all positions where this entity's region exists
+        region_positions = np.argwhere(pattern == entity_val)
+
+        if len(region_positions) > 0:
+            # Randomly pick one position from the region (seed-controlled)
+            chosen_idx = random.randint(0, len(region_positions) - 1)
+            chosen_pos = region_positions[chosen_idx]
+
+            # Clear all region positions to corridor (1)
+            final_pattern[pattern == entity_val] = 1
+
+            # Place the entity at the chosen position
+            final_pattern[chosen_pos[0], chosen_pos[1]] = entity_val
+
+    return create_custom_maze_sequence([final_pattern], maze_size=9, seed=seed)
+
+def create_complex_maze(include_locks=True):
+    """
+
+    This example creates a sequence showing an entity moving around the maze in a predefined path.
+
+    Args:
+        include_locks (bool): If True, include locks blocking access to keys. If False, no locks.
+
+    Returns:
+        tuple: (observations, venv) - List of observations and final environment
+    """
+    # Define maze patterns (7x7 grids)
+    # 0 = wall, 1 = corridor, 2 = player, 3 = first entity, 4 = second entity
+    # Values: 3 = gem, 4 = blue key, 5 = green key, 6 = red key, 7 = blue lock, 8 = green lock, 9 = red lock
+    pattern = np.array([
+            [0, -1, -1, -1, -1, -1, 0],
+            [-1, 0, 0, -1, 0, 0, -1],
+            [-1, 0, 0, 1, 0, 0, -1],
+            [-1, -1, 1, 2, 1, -1, -1],
+            [-1, 0, 0, 1, 0, 0, -1],
+            [-1, 0, 0, -1, 0, 0, -1],
+            [0, 1, 1, 1, -1, -1, 0]])
+
+
+    # Define the key-lock pairs (key: lock that blocks access to it)
+    # Blue key (4) has no lock blocking it
+    # Green key (5) has blue lock (7) blocking access to it
+    # Red key (6) has green lock (8) blocking access to it
+    # Gem (3) has red lock (9) blocking access to it
+
+    # Create dictionary mapping keys to their blocking locks
+    key_to_lock = {
+        4: None,  # blue key, no lock
+        5: 7,     # green key, blocked by blue lock
+        6: 8,     # red key, blocked by green lock
+        3: 9      # gem, blocked by red lock
+    }
+
+    # Define the 4 corridors of the cross (left, top, right, bottom)
+    # Each corridor has a key position at the end and a lock position closer to center
+    corridors = [
+        {'name': 'left', 'key_pos': (3, 0), 'lock_pos': (3, 1)},
+        {'name': 'top', 'key_pos': (0, 3), 'lock_pos': (1, 3)},
+        {'name': 'right', 'key_pos': (3, 6), 'lock_pos': (3, 5)},
+        {'name': 'bottom', 'key_pos': (6, 3), 'lock_pos': (5, 3)}
+    ]
+
+    # Create list of keys to place
+    keys = [4, 5, 6, 3]  # blue key, green key, red key, gem
+
+    # Shuffle the keys to randomize their placement
+    random.shuffle(keys)
+
+    # Clear all original entity/lock positions in the pattern
+    for corridor in corridors:
+        r, c = corridor['key_pos']
+        pattern[r, c] = 1  # Clear key position
+        r, c = corridor['lock_pos']
+        pattern[r, c] = 1  # Clear lock position
+
+    # Place each key in a corridor with its corresponding lock
+    for corridor, key_val in zip(corridors, keys):
+        # Place the key at the end of the corridor
+        r, c = corridor['key_pos']
+        pattern[r, c] = key_val
+
+        # Only place locks if include_locks is True
+        if include_locks:
+            # Place the corresponding lock that blocks this key
+            lock_val = key_to_lock[key_val]
+            if lock_val is not None:
+                r_lock, c_lock = corridor['lock_pos']
+                pattern[r_lock, c_lock] = lock_val
+            # If lock_val is None (blue key), leave the lock position as corridor (1)
 
     return create_custom_maze_sequence([pattern])
-
 
 def create_fork_maze():
     """
@@ -812,7 +951,7 @@ def create_sequential_maze():
     """
     Creates a maze with distinct paths to each entity type.
     The maze is designed to test sequential entity collection behavior.
-    
+
     Returns:
         tuple: (observations, venv) - List of observations and final environment
     """
@@ -831,7 +970,7 @@ def create_sequential_maze():
     # Randomize the positions of the entities (values 3, 4, 5, 6)
     entity_values = [3, 4, 5, 6]  # gem, blue key, green key, red key
     random.shuffle(entity_values)
-    
+
     # Create a mapping from original values to shuffled values
     entity_mapping = {
         3: entity_values[0],
@@ -839,11 +978,84 @@ def create_sequential_maze():
         5: entity_values[2],
         6: entity_values[3]
     }
-    
+
     # Apply the mapping to the pattern
     for i in range(pattern.shape[0]):
         for j in range(pattern.shape[1]):
             if pattern[i, j] in entity_mapping:
                 pattern[i, j] = entity_mapping[pattern[i, j]]
-    
+
     return create_custom_maze_sequence([pattern])
+
+
+def create_t_corridor_maze(entity_code=4, gem_on_left=False, two_keys=False, left_key=5, right_key=4):
+    """
+    Creates a T-shaped corridor maze with agent starting at bottom of T,
+    going up the vertical corridor, then turning right (or left if gem variant) to reach an entity.
+
+    Args:
+        entity_code (int): Code for the entity at the end (default: 4, blue key)
+                          3 = gem, 4 = blue key, 5 = green key, 6 = red key
+        gem_on_left (bool): If True, entity is on left arm of T (for gem variant setup)
+                           If False, entity is on right arm of T (default)
+        two_keys (bool): If True, place two different keys on left and right arms
+        left_key (int): Key code for left arm when two_keys=True (default: 5, green)
+        right_key (int): Key code for right arm when two_keys=True (default: 4, blue)
+
+    Returns:
+        tuple: (observations, venv) - List of observations and final environment
+    """
+    # T-shape: agent at bottom center, vertical corridor up to the middle row,
+    # full horizontal arm across that middle row, entity on one end.
+    # Encoding: 0=wall, 1=corridor, 2=player, 3=placeholder entity, possible gem=4
+
+    # Note: Our grid builder treats the first row of the pattern as the BOTTOM
+    # of the maze (we convert intuitive y to engine y internally). Therefore we
+    # define rows from bottom to top here for clarity.
+
+    if two_keys:
+        # Place two different keys on left and right arms
+        pattern = np.array([
+            [0, 0, 0, 2, 0, 0, 0],  # row 0 (bottom): player at center bottom
+            [0, 0, 0, 1, 0, 0, 0],  # row 1: vertical corridor
+            [0, 0, 0, 1, 0, 0, 0],  # row 2: vertical corridor
+            [0, 0, 0, 1, 0, 0, 0],  # row 3: vertical corridor
+            [left_key, 1, 1, 1, 1, 1, right_key],  # row 4 (top arm): keys on both ends
+            [0, 0, 0, 0, 0, 0, 0],  # row 5: walls
+            [0, 0, 0, 0, 0, 0, 0],  # row 6: walls
+        ])
+        # No need for the pattern replacement logic below
+        return create_custom_maze_sequence([pattern])
+    elif gem_on_left:
+        # Entity (placeholder 3) appears at the end of the top arm and gem appears on left
+        pattern = np.array([
+            [0, 0, 0, 2, 0, 0, 0],  # row 0 (bottom): player at center bottom
+            [0, 0, 0, 1, 0, 0, 0],  # row 1: vertical corridor
+            [0, 0, 0, 1, 0, 0, 0],  # row 2: vertical corridor
+            [0, 0, 0, 1, 0, 0, 0],  # row 3: vertical corridor
+            [3, 1, 1, 1, 1, 1, 4],  # row 4 (top arm): entity on LEFT end
+            [0, 0, 0, 0, 0, 0, 0],  # row 5: walls
+            [0, 0, 0, 0, 0, 0, 0],  # row 6: walls
+        ])
+    else:
+        # Entity (placeholder 3) appears at the left end of the top
+        pattern = np.array([
+            [0, 0, 0, 2, 0, 0, 0],  # row 0 (bottom): player at center bottom
+            [0, 0, 0, 1, 0, 0, 0],  # row 1: vertical corridor
+            [0, 0, 0, 1, 0, 0, 0],  # row 2: vertical corridor
+            [0, 0, 0, 1, 0, 0, 0],  # row 3: vertical corridor
+            [1, 1, 1, 1, 1, 1, 4],  # row 4 (top arm): entity on RIGHT end
+            [0, 0, 0, 0, 0, 0, 0],  # row 5: walls
+            [0, 0, 0, 0, 0, 0, 0],  # row 6: walls
+        ])
+
+    # Build final pattern honoring user's markers:
+    # - 3 = gem marker in this function (map to actual gem code 3)
+    # - 4 = placeholder for swap entity (replace with entity_code)
+    final_pattern = pattern.copy()
+    # Place gem where 3s are (gem code is 3)
+    final_pattern[pattern == 3] = 3
+    # Place the requested entity where 4s are
+    final_pattern[pattern == 4] = entity_code
+
+    return create_custom_maze_sequence([final_pattern])
