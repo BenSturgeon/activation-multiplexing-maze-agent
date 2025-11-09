@@ -25,6 +25,9 @@ share/python-wheels/
 .installed.cfg
 *.egg
 MANIFEST
+package-lock.json
+package.json
+node_modules/
 
 # PyInstaller
 #  Usually these files are written by a python script from a template
@@ -162,6 +165,8 @@ cython_debug/
 # Data
 data/
 *.pkl
+*.csv
+*.json
 
 # Tensorflow 
 *.pth
@@ -175,6 +180,7 @@ mlruns/
 # media
 *.gif
 *.png
+*.pdf
 
 # Weights & Biases
 wandb/
@@ -182,3 +188,10 @@ wandb/
 
 common_mistakes.md
 .DS_Store
+
+# Ignore all .txt files except requirements.txt
+*.txt
+!requirements.txt
+
+*.out
+*.backup
