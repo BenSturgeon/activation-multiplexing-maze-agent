@@ -22,13 +22,13 @@ import sys
 import torch
 
 sys.path.append("../")  # This is added so we can import from the source folder
-from policies_impala import ImpalaCNN
-from interpretable_impala import CustomCNN as interpretable_CNN
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../..'))  # Add repo root to path
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))  # Add src to path
 
-# from src.policies_modified import ImpalaCNN
-from visualisation_functions import *
-
-from utils import heist
+from src.policies_impala import ImpalaCNN
+from src.interpretable_impala import CustomCNN as interpretable_CNN
+from src.visualisation_functions import *
+from src.utils import heist
 
 
 def get_device():
@@ -42,6 +42,56 @@ def get_device():
 device = get_device()
 
 
+def load_interpretable_model_fast(model_path="base_models/full_run/model_35001.0.pt"):
+    """Fast model loading with timeout and verbose logging."""
+    import signal
+    import time
+
+    class TimeoutError(Exception):
+        pass
+
+    def timeout_handler(signum, frame):
+        raise TimeoutError("Model loading timed out")
+
+    print(f"[FAST_LOAD] Starting model load from {model_path}")
+    start_time = time.time()
+
+    try:
+        # Set 30 second timeout
+        signal.signal(signal.SIGALRM, timeout_handler)
+        signal.alarm(30)
+
+        print("[FAST_LOAD] Creating model with known obs/action spaces...")
+
+        # Use known dimensions instead of creating gym environment
+        class FakeObsSpace:
+            def __init__(self):
+                self.shape = (64, 64, 3)
+
+        observation_space = FakeObsSpace()
+        action_space = 15
+
+        print("[FAST_LOAD] Initializing CustomCNN...")
+        model = interpretable_CNN(observation_space, action_space)
+
+        print("[FAST_LOAD] Loading state dict...")
+        model.load_from_file(model_path, device="cpu")
+
+        elapsed = time.time() - start_time
+        print(f"[FAST_LOAD] Model loaded successfully in {elapsed:.2f}s")
+
+        signal.alarm(0)  # Cancel timeout
+        return model
+
+    except TimeoutError:
+        print("[FAST_LOAD] ERROR: Model loading timed out after 30 seconds")
+        raise
+    except Exception as e:
+        elapsed = time.time() - start_time
+        print(f"[FAST_LOAD] ERROR after {elapsed:.2f}s: {e}")
+        raise
+    finally:
+        signal.alarm(0)  # Ensure timeout is canceled
 
 
 class ModelActivations:
@@ -127,7 +177,7 @@ def find_latest_model_checkpoint(base_dir):
     """Finds the latest base model checkpoint based on step count or modification time."""
     if not os.path.isdir(base_dir):
         print(f"Warning: Model checkpoint base directory not found: {base_dir}")
-        return None
+    return None
 
     # Search potentially nested directories, e.g., models/maze_I/
     checkpoints = glob.glob(os.path.join(base_dir, "**", "*.pt"), recursive=True)
@@ -164,6 +214,24 @@ def find_latest_model_checkpoint(base_dir):
 def load_interpretable_model(
     ImpalaCNN=interpretable_CNN, model_path="base_models/256_256_8_6101_1.pt"
 ):
+    # Use known procgen heist observation space instead of creating gym env
+    # This avoids the slow gym.make() call that can hang
+    class FakeObsSpace:
+        def __init__(self):
+            self.shape = (64, 64, 3)  # Known procgen heist observation space
+
+    observation_space = FakeObsSpace()
+    action_space = 15  # Known procgen heist action space size
+
+    model = ImpalaCNN(observation_space, action_space)
+    model.load_from_file(model_path, device="cpu")
+    return model
+
+
+def load_interpretable_model_with_env(
+    ImpalaCNN=interpretable_CNN, model_path="base_models/256_256_8_6101_1.pt"
+):
+    """Original function that creates gym environment - use only when env is needed."""
     env_name = "procgen:procgen-heist-v0"
     env = gym.make(
         env_name,
@@ -1588,6 +1656,122 @@ def prepare_frame_for_gif(obs):
         return None
 
     return frame_to_store
+
+
+def save_observations_as_gif(observations, filepath="rollout.gif", fps=10, enhance_size=False):
+    """
+    Save a list of observations as a GIF file.
+
+    Args:
+        observations: List of observations (numpy arrays) from environment rollout
+        filepath: Path where to save the GIF file
+        fps: Frames per second for the GIF
+        enhance_size: If True, enlarges frames for better visibility
+
+    Returns:
+        bool: True if successful, False otherwise
+    """
+    import os
+
+    if not observations or len(observations) == 0:
+        print(f"[SAVE_GIF] No observations provided")
+        return False
+
+    frames = []
+
+    for i, obs in enumerate(observations):
+        # Prepare frame for GIF
+        frame = prepare_frame_for_gif(obs)
+
+        if frame is None:
+            print(f"[SAVE_GIF] Failed to prepare frame {i}")
+            continue
+
+        # Optionally enhance size for better visibility
+        if enhance_size:
+            fig, ax = plt.subplots(figsize=(6, 6))
+            ax.imshow(frame)
+            ax.axis('off')
+            ax.set_title(f"Step {i}")
+
+            fig.tight_layout(pad=0.5)
+            fig.canvas.draw()
+            enhanced_frame = np.array(fig.canvas.renderer.buffer_rgba())[:,:,:3]
+            frames.append(enhanced_frame)
+            plt.close(fig)
+        else:
+            frames.append(frame)
+
+    if len(frames) == 0:
+        print(f"[SAVE_GIF] No valid frames to save")
+        return False
+
+    # Create directory if it doesn't exist
+    os.makedirs(os.path.dirname(filepath) if os.path.dirname(filepath) else ".", exist_ok=True)
+
+    try:
+        imageio.mimsave(filepath, frames, fps=fps)
+        print(f"[SAVE_GIF] Successfully saved {len(frames)} frames to {filepath}")
+        return True
+    except Exception as e:
+        print(f"[SAVE_GIF] Error saving GIF: {e}")
+        return False
+
+
+def save_rollout_as_gif(venv, model, num_steps=100, filepath="rollout.gif", fps=10, collect_every=1):
+    """
+    Run a rollout and save observations as a GIF.
+
+    Args:
+        venv: Vectorized environment
+        model: Policy model to generate actions
+        num_steps: Maximum number of steps to run
+        filepath: Path where to save the GIF
+        fps: Frames per second for the GIF
+        collect_every: Collect frames every N steps (1 = every step)
+
+    Returns:
+        tuple: (observations_list, total_reward, done)
+    """
+    device = get_device()
+    model = model.to(device)
+    model.eval()
+
+    observations_to_save = []
+    all_observations = []
+    obs = venv.reset()
+    total_reward = 0
+    done = False
+
+    for step in range(num_steps):
+        # Store observation for GIF if it's a collection step
+        if step % collect_every == 0:
+            observations_to_save.append(obs[0] if obs.ndim == 4 else obs)
+
+        # Store all observations
+        all_observations.append(obs[0] if obs.ndim == 4 else obs)
+
+        # Generate action
+        obs_rgb = observation_to_rgb(obs)
+        action = generate_action(model, obs_rgb, is_procgen_env=True)
+
+        # Step environment
+        obs, reward, done, info = venv.step(action)
+        total_reward += reward[0] if isinstance(reward, np.ndarray) else reward
+
+        # Check if episode ended
+        is_done = done[0] if isinstance(done, np.ndarray) else done
+        if is_done:
+            break
+
+    # Save the GIF
+    success = save_observations_as_gif(observations_to_save, filepath, fps=fps)
+
+    if success:
+        print(f"[ROLLOUT_GIF] Saved {len(observations_to_save)} frames over {step+1} steps")
+        print(f"[ROLLOUT_GIF] Total reward: {total_reward}")
+
+    return all_observations, total_reward, done
 
 
 def process_observation_for_model(obs, device):

@@ -11,8 +11,11 @@ from utils.heist import EnvState
 ENTITY_CODES = {
     3: "gem",
     4: "blue_key",
-    5: "green_key", 
-    6: "red_key"
+    5: "green_key",
+    6: "red_key",
+    7: "blue_lock",
+    8: "green_lock",
+    9: "red_lock"
 }
 
 # Entity type and theme mappings
@@ -21,6 +24,9 @@ ENTITY_TYPE_THEME = {
     4: (2, 0),     # blue_key: type 2, theme 0
     5: (2, 1),     # green_key: type 2, theme 1
     6: (2, 2),     # red_key: type 2, theme 2
+    7: (1, 0),     # blue_lock: type 1, theme 0
+    8: (1, 1),     # green_lock: type 1, theme 1
+    9: (1, 2),     # red_lock: type 1, theme 2
 }
 
 
@@ -52,59 +58,82 @@ def get_entity_counts(state: EnvState) -> Dict[int, int]:
 
 def detect_collections(
     current_state: EnvState,
-    previous_counts: Optional[Dict[int, int]] = None
+    previous_counts: Optional[Dict[int, int]] = None,
+    episode_done: bool = False,
+    initial_gem_exists: bool = False
 ) -> Tuple[Dict[int, int], List[str]]:
     """
     Detect which entities were collected by comparing current state to previous counts.
-    
+
     This is the main single-responsibility function for entity collection detection.
-    
+
+    NOTE: Gem collection cannot be detected via entity counts because the episode
+    ends (done=True) immediately when gem is collected. Use episode_done=True to
+    detect gem collection.
+
     Args:
         current_state: Current EnvState object
         previous_counts: Dict of entity codes to counts from previous step
                         If None, no collections will be detected (first step)
-    
+        episode_done: If True and initial_gem_exists, gem collection is detected
+        initial_gem_exists: Whether gem existed at episode start (for done-based detection)
+
     Returns:
         Tuple of:
         - Updated counts dict for next comparison
         - List of entity names that were collected this step
-        
+
     Example:
         >>> # First step - initialize
-        >>> counts, collected = detect_collections(initial_state)
+        >>> gem_exists = state.entity_exists(ENTITY_TYPES['gem'], None)
+        >>> counts, collected = detect_collections(initial_state, initial_gem_exists=gem_exists)
         >>> print(counts)  # {3: 1, 4: 2, 5: 2, 6: 2}
         >>> print(collected)  # []
-        
+
         >>> # Later step after picking up blue key
         >>> counts, collected = detect_collections(new_state, counts)
         >>> print(counts)  # {3: 1, 4: 1, 5: 2, 6: 2}
         >>> print(collected)  # ['blue_key']
+
+        >>> # Episode ends (gem collected)
+        >>> counts, collected = detect_collections(new_state, counts,
+        ...                                         episode_done=True,
+        ...                                         initial_gem_exists=True)
+        >>> print(collected)  # ['gem']
     """
     # Get current counts
     current_counts = get_entity_counts(current_state)
-    
+
     # If no previous counts provided, this is initialization
     if previous_counts is None:
         return current_counts, []
-    
+
     # Detect collections by comparing counts
     collected_entities = []
-    
+
+    # Check for gem collection via done flag (can't use entity counts)
+    if episode_done and initial_gem_exists:
+        collected_entities.append('gem')
+
     for code, entity_name in ENTITY_CODES.items():
         prev_count = previous_counts.get(code, 0)
         curr_count = current_counts.get(code, 0)
-        
-        # Check if entity was collected based on count change
+
+        # Check if entity was collected/opened based on count change
         if code == 3:  # Gem
-            # Gem is collected when count goes from 1 to 0
-            if prev_count == 1 and curr_count == 0:
-                collected_entities.append(entity_name)
-        else:  # Keys (codes 4, 5, 6)
+            # Gem collection is handled via episode_done flag above
+            # (entity count method doesn't work due to immediate reset)
+            pass
+        elif code in [4, 5, 6]:  # Keys
             # Key is collected when count goes from 2 to 1
             # (board copy picked up, HUD copy remains)
             if prev_count == 2 and curr_count == 1:
                 collected_entities.append(entity_name)
-    
+        elif code in [7, 8, 9]:  # Locks
+            # Lock is opened when count goes from 1 to 0
+            if prev_count == 1 and curr_count == 0:
+                collected_entities.append(entity_name)
+
     return current_counts, collected_entities
 
 
@@ -122,13 +151,16 @@ def get_collection_status(counts: Dict[int, int]) -> Dict[str, bool]:
     
     for code, entity_name in ENTITY_CODES.items():
         count = counts.get(code, 0)
-        
+
         if code == 3:  # Gem
             # Gem is collected if count is 0
             status[entity_name] = (count == 0)
-        else:  # Keys
+        elif code in [4, 5, 6]:  # Keys
             # Key is collected if count is 1 (only HUD copy remains)
             status[entity_name] = (count == 1)
+        elif code in [7, 8, 9]:  # Locks
+            # Lock is opened if count is 0
+            status[entity_name] = (count == 0)
     
     return status
 

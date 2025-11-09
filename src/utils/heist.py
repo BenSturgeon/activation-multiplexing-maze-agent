@@ -14,21 +14,41 @@ import typing
 import math
 import sys
 import os
-sys.path.append(os.path.abspath(os.path.join(os.getcwd(), '..', 'src')))
-from procgen import ProcgenGym3Env
+
+# Add src to path if not already there
+src_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+if src_path not in sys.path:
+    sys.path.insert(0, src_path)
+
+try:
+    from procgen import ProcgenGym3Env
+except ImportError:
+    # If procgen import fails, continue anyway - some functions may still work
+    ProcgenGym3Env = None
+
 import struct
 import typing
 from typing import Tuple, Dict, Callable, List, Optional
 from dataclasses import dataclass
-import sys
-import os
 
+# Use absolute imports from src
+try:
+    from policies_impala import ImpalaCNN
+except ImportError:
+    try:
+        from src.policies_impala import ImpalaCNN
+    except ImportError:
+        ImpalaCNN = None
 
+try:
+    from procgen_tools.procgen_wrappers import VecExtractDictObs, TransposeFrame, ScaledFloatFrame
+except ImportError:
+    VecExtractDictObs = TransposeFrame = ScaledFloatFrame = None
 
-from policies_impala import ImpalaCNN
-from procgen_tools.procgen_wrappers import VecExtractDictObs, TransposeFrame, ScaledFloatFrame
-
-from gym3 import ToBaselinesVecEnv
+try:
+    from gym3 import ToBaselinesVecEnv
+except ImportError:
+    ToBaselinesVecEnv = None
 
 
 ordered_layer_names  = {
