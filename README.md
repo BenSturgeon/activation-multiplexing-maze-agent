@@ -14,6 +14,13 @@ Multiplexed entity representations encoded via activation strength
 
 These results demonstrate how SAEs compress and organize behaviorally-relevant information—and offer insights into interpretability in multi-objective RL settings.
 
+## 📚 Documentation Index
+
+For a comprehensive overview of all experiments and findings, see:
+- **[Experiments Index](src/documentation/EXPERIMENTS_INDEX.md)** - Complete index of all ablation experiments
+- **[Inverse Ablation Method](src/inverse_ablation_experiments/EXPERIMENT_METHOD.md)** - Latest experimental approach (Aug 2025)
+- **[Hypotheses and Findings](src/documentation/hypotheses_and_findings.md)** - Key discoveries about channel specialization
+
 
 
 ## Prerequisites
