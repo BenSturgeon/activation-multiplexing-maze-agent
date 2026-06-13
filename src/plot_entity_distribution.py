@@ -487,8 +487,8 @@ def main(results_dir, num_top_channels=20, auto_select_first_file=True, dead_cha
     
     # Determine figure dimensions based on number of top channels
     num_plot_channels = len(channels_to_plot_pd_index) 
-    fig_height = max(6, num_plot_channels * 0.35) 
-    fig_width = max(12, num_plot_channels * 0.5) # Adjusted minimum width
+    fig_height = max(6, num_plot_channels * 0.35)
+    fig_width = max(14, num_plot_channels * 2.0) # Wider spacing between channels
     plt.figure(figsize=(fig_width, fig_height))
     
     # Create the stripplot with custom colors

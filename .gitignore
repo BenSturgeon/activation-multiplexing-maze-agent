@@ -189,9 +189,13 @@ wandb/
 common_mistakes.md
 .DS_Store
 
-# Ignore all .txt files except requirements.txt
+# Ignore all .txt files except requirements files
 *.txt
 !requirements.txt
+!requirements-clean.txt
+
+# Slurm logs
+slurm_logs/
 
 *.out
 *.backup

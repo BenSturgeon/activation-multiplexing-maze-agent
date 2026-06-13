@@ -8,25 +8,8 @@ setup(
     long_description_content_type="text/markdown",
     author="Benjamin Sturgeon",
     author_email="sturgeonkid@gmail.com",
-    packages=find_packages(where="src") + ["notebooks", "paul_notebooks"],
-    package_dir={
-        "": "src",
-        "notebooks": "notebooks",
-        "paul_notebooks": "paul_notebooks",
-    },
-    py_modules=[
-        "extract_sae_features",
-        "impala_dropout",
-        "interpretable_impala",
-        "perform_sae_analysis",
-        "policies_impala",
-        "probing",
-        "sae",
-        "sae_training",
-        "third_sae",
-        "train_procgen_wandb",
-        "visualisation_functions",
-    ],
+    packages=find_packages(where="src"),
+    package_dir={"": "src"},
     install_requires=[
         "procgen==0.10.7",
         "ipykernel==6.29.0",
@@ -38,7 +21,7 @@ setup(
         "opencv-python==4.9.0.80",
         "matplotlib",
         "numpy",
-        "git+https://github.com/UlisseMini/procgen-tools.git#egg=procgen-tools",
+        # procgen-tools: install separately via pip install git+https://github.com/UlisseMini/procgen-tools.git
     ],
     extras_require={
         "dev": [

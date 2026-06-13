@@ -43,10 +43,85 @@ except ImportError:
 try:
     from procgen_tools.procgen_wrappers import VecExtractDictObs, TransposeFrame, ScaledFloatFrame
 except ImportError:
-    VecExtractDictObs = TransposeFrame = ScaledFloatFrame = None
+    # Fallback implementations when procgen_tools is unavailable.
+    # These are simple passthrough wrappers (NOT gym.ObservationWrapper) to avoid
+    # gym 0.26 reset() API incompatibilities with the old-style ToBaselinesVecEnv.
+
+    class VecExtractDictObs:
+        def __init__(self, venv, key):
+            self.env = venv
+            self.key = key
+            self.observation_space = venv.observation_space.spaces[key]
+            self.action_space = venv.action_space
+        def _extract(self, obs):
+            return obs[self.key] if isinstance(obs, dict) else obs
+        def reset(self, **kwargs):
+            return self._extract(self.env.reset(**kwargs))
+        def step(self, action):
+            obs, rew, done, info = self.env.step(action)
+            return self._extract(obs), rew, done, info
+        def step_async(self, action):
+            self.env.step_async(action)
+        def step_wait(self):
+            obs, rew, done, info = self.env.step_wait()
+            return self._extract(obs), rew, done, info
+        def close(self):
+            self.env.close()
+        def __getattr__(self, name):
+            return getattr(self.env, name)
+
+    class TransposeFrame:
+        def __init__(self, venv):
+            self.env = venv
+            self.observation_space = venv.observation_space
+            self.action_space = venv.action_space
+        def _transpose(self, obs):
+            return np.transpose(obs, axes=(0, 3, 1, 2)) if obs.ndim == 4 else np.transpose(obs, axes=(2, 0, 1))
+        def reset(self, **kwargs):
+            return self._transpose(self.env.reset(**kwargs))
+        def step(self, action):
+            obs, rew, done, info = self.env.step(action)
+            return self._transpose(obs), rew, done, info
+        def step_async(self, action):
+            self.env.step_async(action)
+        def step_wait(self):
+            obs, rew, done, info = self.env.step_wait()
+            return self._transpose(obs), rew, done, info
+        def close(self):
+            self.env.close()
+        def __getattr__(self, name):
+            return getattr(self.env, name)
+
+    class ScaledFloatFrame:
+        def __init__(self, venv):
+            self.env = venv
+            self.observation_space = venv.observation_space
+            self.action_space = venv.action_space
+        def _scale(self, obs):
+            return np.array(obs).astype(np.float32) / 255.0
+        def reset(self, **kwargs):
+            return self._scale(self.env.reset(**kwargs))
+        def step(self, action):
+            obs, rew, done, info = self.env.step(action)
+            return self._scale(obs), rew, done, info
+        def step_async(self, action):
+            self.env.step_async(action)
+        def step_wait(self):
+            obs, rew, done, info = self.env.step_wait()
+            return self._scale(obs), rew, done, info
+        def close(self):
+            self.env.close()
+        def __getattr__(self, name):
+            return getattr(self.env, name)
 
 try:
-    from gym3 import ToBaselinesVecEnv
+    from gym3 import ToBaselinesVecEnv as _OrigToBaselinesVecEnv
+
+    # Patch ToBaselinesVecEnv to forward attribute access (e.g. callmethod)
+    # to the underlying gym3 env, which procgen_tools' wrappers normally handle.
+    class ToBaselinesVecEnv(_OrigToBaselinesVecEnv):
+        def __getattr__(self, name):
+            return getattr(self.env, name)
 except ImportError:
     ToBaselinesVecEnv = None
 
