@@ -55,11 +55,10 @@ for label, offset in [("baseline", 0.0), ("positive +3.7", 3.7), ("negative -3.0
         obs_tensor = torch.tensor(obs, dtype=torch.float32).permute(0, 3, 1, 2).to(device)
         with torch.no_grad():
             action = generate_action(model, obs_tensor)
-        obs, _, done, info = venv.step(np.array([action]))
+        obs, _, done, info = venv.step(action)
 
         state = heist.state_from_venv(venv, 0)
-        current_counts = get_entity_counts(state)
-        collections = detect_collections(initial_counts, current_counts)
+        collections = detect_collections(state, previous_counts=initial_counts)
         if collections and first_collected is None:
             first_collected = collections[0]
 

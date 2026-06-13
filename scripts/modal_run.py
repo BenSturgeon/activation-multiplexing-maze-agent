@@ -11,7 +11,13 @@ import subprocess
 
 app = modal.App("maze-agent")
 
-PROJECT_DIR = "/mnt/nw/home/b.sturgeon/activation-multiplexing-maze-agent"
+# Local path to this repo on the machine running `modal run` (add_local_dir runs locally).
+PROJECT_DIR = "/Users/bensturgeon/werk/activation-multiplexing-maze-agent"
+
+# Persistent volume for generated artifacts (figures/CSVs). Without this, anything
+# written inside the container is lost on exit. Write outputs to /root/project/outputs
+# in your scripts, then pull with: modal volume get rl-mech-interp-results <path> .
+results_vol = modal.Volume.from_name("rl-mech-interp-results", create_if_missing=True)
 
 image = (
     modal.Image.debian_slim(python_version="3.10")
@@ -65,10 +71,13 @@ image = (
     image=image,
     gpu="L4",
     timeout=14400,
+    volumes={"/root/project/outputs": results_vol},
 )
 def run_command(command: str):
-    """Run a shell command in the project directory."""
+    """Run a shell command in the project directory. Artifacts written under
+    /root/project/outputs persist to the rl-mech-interp-results volume."""
     import os
+    os.makedirs("/root/project/outputs", exist_ok=True)
     os.chdir("/root/project")
 
     result = subprocess.run(
@@ -80,6 +89,7 @@ def run_command(command: str):
     print(result.stdout)
     if result.stderr:
         print("STDERR:", result.stderr)
+    results_vol.commit()  # persist any outputs before returning
     if result.returncode != 0:
         raise RuntimeError(f"Command failed with exit code {result.returncode}")
     return result.stdout
