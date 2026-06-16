@@ -25,62 +25,22 @@ import json
 import numpy as np
 import torch
 
-from src.utils.helpers import (
-    load_interpretable_model,
-    ModelActivations,
-    get_device,
-    generate_action,
-    observation_to_rgb,
+from src.entity_activation_analysis.rollout_lib import (
+    load_model, make_venv, rollout, CONV4A as LAYER,
 )
-from src.utils import heist
 
-LAYER = 'conv4a'
 MAX_STEPS = 100
 
 
-def _strip_entities(venv):
-    """Remove all target entities (gem, keys, locks) from a live venv in place."""
-    state = heist.state_from_venv(venv, 0)
-    state.remove_gem()
-    state.delete_keys()
-    state.delete_locks()
-    sb = state.state_bytes
-    if sb is None:
-        raise RuntimeError("state_bytes is None after stripping entities")
-    venv.env.callmethod("set_state", [sb])
-    return venv.reset()
-
-
 def run_rollout(model, model_activations, seed, strip):
-    """Run one rollout; return list of conv4a pooled vectors (one per timestep)."""
+    """One rollout; return conv4a pooled vectors (T, C). Thin wrapper over the
+    shared rollout primitive so behavior is pinned by verify_rollout.py."""
     np.random.seed(seed)
     torch.manual_seed(seed)
-
-    venv = heist.create_venv(num=1, start_level=seed, num_levels=1)
-    if strip:
-        obs = _strip_entities(venv)
-    else:
-        obs = venv.reset()
-    obs = obs[0]
-
-    device = get_device()
-    pooled_per_step = []
-    for _ in range(MAX_STEPS):
-        obs_rgb = observation_to_rgb(obs if obs.ndim == 3 else obs[0])
-        obs_tensor = torch.tensor(obs_rgb, dtype=torch.float32).unsqueeze(0).to(device)
-        _, activations = model_activations.run_with_cache(obs_tensor, [LAYER])
-        if LAYER in activations:
-            feat = activations[LAYER]
-            pooled = torch.mean(feat, dim=(1, 2)).cpu().numpy().ravel()
-            pooled_per_step.append(pooled)
-
-        action = generate_action(model, obs)
-        obs, _, done, _ = venv.step(action)
-        obs = obs[0]
-        if np.array(done).ravel()[0]:
-            break
+    venv, obs = make_venv(seed, strip=strip)
+    traj = rollout(model, model_activations, venv, obs, max_steps=MAX_STEPS)
     venv.close()
-    return np.array(pooled_per_step)  # (T, C)
+    return traj  # (T, C)
 
 
 def summarize(stacked):
@@ -131,14 +91,7 @@ def main():
 
     os.makedirs(args.output_dir, exist_ok=True)
 
-    model_path = os.path.join(os.path.dirname(__file__),
-                              '../../base_models/full_run/model_35001.0.pt')
-    if not os.path.exists(model_path):
-        model_path = None  # fall back to helper default
-    model = load_interpretable_model(model_path=model_path) if model_path \
-        else load_interpretable_model()
-    model.eval().to(get_device())
-    model_activations = ModelActivations(model)
+    model, model_activations = load_model()
 
     conditions = {"standard": False, "no_entity": True}
     collected = {k: [] for k in conditions}
