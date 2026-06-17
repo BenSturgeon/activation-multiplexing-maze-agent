@@ -12,12 +12,11 @@ import numpy as np
 import torch
 
 from src.utils.helpers import (
-    load_interpretable_model,
-    ModelActivations,
     get_device,
     generate_action,
-    observation_to_rgb
+    observation_to_rgb,
 )
+from src.entity_activation_analysis.rollout_lib import load_model
 from src.utils.create_intervention_mazes import create_cross_maze
 from src.utils.entity_collection_detector import get_entity_counts, detect_collections
 from src.utils import heist
@@ -215,11 +214,7 @@ def run_with_intervention(model, seed, offset=None):
 
 def main():
     # Load model
-    model_path = "base_models/full_run/model_35001.0.pt"
-    device = get_device()
-    model = load_interpretable_model(model_path=model_path).to(device)
-    model.eval()
-    model_activations = ModelActivations(model)
+    model, model_activations = load_model()
 
     print("=== STEP 1: Collecting per-seed red-targeting patterns ===")
 

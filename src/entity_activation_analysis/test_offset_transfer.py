@@ -17,12 +17,10 @@ import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
 
 from src.utils.helpers import (
-    load_interpretable_model,
-    ModelActivations,
     observation_to_rgb,
-    get_device,
-    generate_action
+    generate_action,
 )
+from src.entity_activation_analysis.rollout_lib import load_model
 from src.utils.create_intervention_mazes import create_t_corridor_maze
 from src.utils.entity_collection_detector import detect_collections
 from src.utils import heist
@@ -89,9 +87,7 @@ def run_offset_transfer_experiment(checkpoint='30k'):
     }
 
     model_path = checkpoint_map.get(checkpoint, checkpoint_map['30k'])
-    device = get_device()
-    model = load_interpretable_model(model_path=model_path).to(device)
-    model.eval()
+    model, model_activations = load_model(checkpoint=os.path.basename(model_path))
     print(f"Loaded model: {model_path}")
 
     # Calculate offsets from previous experiment
@@ -113,9 +109,6 @@ def run_offset_transfer_experiment(checkpoint='30k'):
         right_key=4   # Blue key on right
     )
     obs = obs_list[0]
-
-    # Create model with hooks for intervention
-    model_activations = ModelActivations(model)
 
     # Store results
     results = {

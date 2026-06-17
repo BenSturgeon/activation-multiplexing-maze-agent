@@ -25,12 +25,10 @@ from datetime import datetime
 from collections import defaultdict
 
 from src.utils.helpers import (
-    load_interpretable_model,
-    ModelActivations,
     observation_to_rgb,
-    get_device,
-    generate_action
+    generate_action,
 )
+from src.entity_activation_analysis.rollout_lib import load_model
 from src.utils.create_intervention_mazes import create_t_corridor_maze
 from src.utils import heist
 from src.utils.entity_collection_detector import detect_collections
@@ -204,11 +202,8 @@ def run_rollout_with_entity_swapping(base_entity_code=4, gem_on_left=False,
         model_path = "base_models/full_run/model_60001.0.pt"
         checkpoint = "60k"
 
-    device = get_device()
-    model = load_interpretable_model(model_path=model_path).to(device)
-    model.eval()
+    model, model_activations = load_model(checkpoint=os.path.basename(model_path))
     print(f"Using checkpoint: {checkpoint} ({model_path})")
-    model_activations = ModelActivations(model)
 
     # Determine which entities to swap
     if gem_on_left:
