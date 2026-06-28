@@ -70,11 +70,14 @@ def _place_entity(venv, entity_code, target_col, target_row, player):
 def parallel_rollout(model, ma, seed, max_steps=MAX_STEPS):
     np.random.seed(seed); torch.manual_seed(seed)
     _, venv = create_t_corridor_maze(entity_code=ENTITY_CODES['blue_key'], gem_on_left=False)
-    # Cache the fixed target cell (arm end) from the initial maze.
+    # Cache the target cell (arm end) from the initial maze, then jitter the column
+    # along the arm per seed (matches the original "entity positions within the arm
+    # were randomised for meaningful statistical testing") so the CI bands are real.
     _, target = _player_and_target(venv)
     if target is None:
         venv.close(); return []
     tcol, trow = target
+    tcol = tcol - int(np.random.randint(0, 4))  # 0-3 cells toward maze centre along the arm
     per_step = []
     for _ in range(max_steps):
         player, _ = _player_and_target(venv)
